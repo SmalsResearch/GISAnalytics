@@ -9,3 +9,5 @@ bing_api_key = "***"
 
 mapbox_api_key = "***"
 tomtom_api_key = "***"
+
+google_api_key = "***"
