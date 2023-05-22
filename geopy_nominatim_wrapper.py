@@ -2,6 +2,10 @@ import collections.abc
 from functools import partial
 from urllib.parse import urlencode
 
+
+import  json
+import requests
+
 from geopy.exc import ConfigurationError, GeocoderQueryError
 from geopy.geocoders.base import _DEFAULT_USER_AGENT, DEFAULT_SENTINEL, Geocoder
 from geopy.location import Location
@@ -11,17 +15,16 @@ __all__ = ("NominatimWrapper", )
 
 class NominatimWrapper(Geocoder):
     
-    _DEFAULT_NOMINATIM_WRAPPER_DOMAIN  ="10.1.0.45:5000"
+    _DEFAULT_NOMINATIM_WRAPPER_DOMAIN  ="nominatimwrapper.smalsrech.be"
     structured_query_params = {
-        'street',
-        'city',
-        'county',
-        'state',
-        'country',
-        'postalcode',
+        'streetName', 'street',
+        'houseNumber', 'housenumber',
+        'postCode', 'postcode',
+        'postName', 'city',
+        'countryName', 'country'
     }
 
-    geocode_path = '/search'
+    geocode_path = '/REST/nominatimWrapper/v1.0/geocode'
     def __init__(
             self,
             *,
@@ -31,7 +34,8 @@ class NominatimWrapper(Geocoder):
             scheme="http",
             user_agent=None,
             ssl_context=DEFAULT_SENTINEL,
-            adapter_factory=None
+            adapter_factory=None,
+            withExtraHouseNumber=True
             # Make sure to synchronize the changes of this signature in the
             # inheriting classes (e.g. PickPoint).
     ):
@@ -71,7 +75,7 @@ class NominatimWrapper(Geocoder):
         )
 
         self.domain = domain.strip('/')
-
+        self.withExtraHouseNumber = withExtraHouseNumber
         
 
         self.api = "%s://%s%s" % (self.scheme, self.domain, self.geocode_path)
@@ -180,46 +184,97 @@ class NominatimWrapper(Geocoder):
 
         :rtype: ``None``, :class:`geopy.location.Location` or a list of them, if
             ``exactly_one=False``.
-
         """
-
+        # print("query: ", query)
         if isinstance(query, collections.abc.Mapping):
-            params = {
+            addr_data = {
                 key: val
                 for key, val
                 in query.items()
                 if key in self.structured_query_params
             }
+            mappings = {'city':'postName',
+                        'housenumber': 'houseNumber',
+                        'postcode': 'postCode',
+                        'country': 'countryName',
+                       'street': 'streetName'}
+            
+            for alt_name in mappings:
+                if alt_name in query and mappings[alt_name] not in addr_data:
+                    addr_data[mappings[alt_name]] = query[alt_name]
+            
+            # print(addr_data)
+            # for alt_names= [ ('city', 'postName', 'postc
+            
+            # print("query:", query)
+            # print("addr_data: ", addr_data)
+            # print("struct param: ", self.structured_query_params)
         else:
-            params = {'street': query}
-
-        params.update({
-            "check_result" : "no",
-            "struct_osm" :  "no"
+            addr_data = {'fullAddress': query}
+    
+        # print(addr_data)
+        params = ({
+            "checkResult" : False,
+            "structOsm" : False,
+            "withRejected": False,
+            "extraHouseNumber": self.withExtraHouseNumber,
+            "mode": "short"
         })
 
         url = self._construct_url(self.api, params)
         logger.debug("%s.geocode: %s", self.__class__.__name__, url)
         callback = partial(self._parse_json, exactly_one=exactly_one)
-        return self._call_geocoder(url, callback, timeout=timeout)
+        return self._call_geocoder(url, callback, addr_data, timeout=timeout)
 
+    def _call_geocoder(self, url, callback, addr_data, timeout):
+
+        timeout = (timeout if timeout is not DEFAULT_SENTINEL
+                   else self.timeout)
+        
+        data = {"address": addr_data}
+
+        try: 
+            
+            result = requests.post(
+                url,
+                json=data, timeout=timeout)
+            #print(result)
+            
+            if result.status_code == 204:
+                #print("No result!")
+                #print(addr_data)
+                #print(result.text)
+                return
+            elif result.status_code == 400:
+                print("Argument error")
+                print(result.text)
+            
+            #print(type(result.text))
+            return callback(json.loads(result.text))
+        except Exception as e:
+            print("Exception !")
+            print(addr_data)
+            print(e)
+            raise e
 
     def _parse_code(self, place):
         # Parse each resource.
-        #print(place)
+        # print(place)
         if "match" not in place: 
             return None
         match = place["match"][0]
-        latitude = match.get('lat', None)
-        longitude = match.get('lon', None)
-        placename = match.get('display_name', None)
+        
+        latitude = match["output"].get('lat', None)
+        longitude = match["output"].get('lon', None)
+        placename = match["output"].get('displayName', None)
         if latitude is not None and longitude is not None:
             latitude = float(latitude)
             longitude = float(longitude)
+            
+        # print("placename: ", placename)
         return Location(placename, (latitude, longitude), match)
 
     def _parse_json(self, places, exactly_one):
-        
         
         if not places:
             return None
