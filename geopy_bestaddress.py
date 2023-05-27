@@ -25,18 +25,18 @@ def coalesce(dct, keys):
 
 class BestAddress(Geocoder):
     
-    _DEFAULT_BEST_DOMAIN  ="privateservices-int.socialsecurity.be"
+    _DEFAULT_BEST_DOMAIN  =None
 
     #geocode_path = '/api/belgianAddress/v2/addresses'
 
     
     authorization_path = "/REST/publicFedServicesGateway/v1/api/oauth2/token"
     
-    street_path = "/REST/publicFedServicesGateway/v1/api/best/v1/belgianAddress/v2/streets"
+    street_path   = "/REST/publicFedServicesGateway/v1/api/best/v1/belgianAddress/v2/streets"
 
-    address_path =  "/REST/publicFedServicesGateway/v1/api/best/v1/belgianAddress/v2/addresses"
+    address_path  =  "/REST/publicFedServicesGateway/v1/api/best/v1/belgianAddress/v2/addresses"
     
-    city_path =  "/REST/publicFedServicesGateway/v1/api/best/v1/belgianAddress/v2/postalInfos"
+    city_path     =  "/REST/publicFedServicesGateway/v1/api/best/v1/belgianAddress/v2/postalInfos"
 
     scope             = "BOSA"
 
