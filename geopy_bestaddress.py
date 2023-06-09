@@ -288,7 +288,7 @@ class BestAddress(Geocoder):
                 city_name = coalesce(city_res["name"], ["fr", "nl", "de"])
                 
                 postcode = city_res["postCode"]
-                return Location(f"{postcode} {city_name}", (0,0), city_res) 
+                return Location(f"{postcode} {city_name}", None, city_res) 
             
             return None
         
@@ -315,7 +315,6 @@ class BestAddress(Geocoder):
                 addr_res["precision"] = "street"
             
                 
-                
         if addr_res is not None:
             street_name = coalesce(addr_res["hasStreetName"]["name"], ["fr", "nl", "de"])
             housenumber = addr_res["houseNumber"] if addr_res["precision"] == "building" else None
@@ -329,7 +328,10 @@ class BestAddress(Geocoder):
                 coords = {'lat':0, 'long':0}
                 addr_res["precision"] = "country"
             
-            return Location(f"{street_name}, {housenumber if housenumber else ''}, {postcode} {city_name} {'('+part_city_name+')' if part_city_name else ''}", (coords['lat'], coords['long']), addr_res) 
+            return Location(f"{street_name}, {housenumber if housenumber else ''}, {postcode} {city_name} {'('+part_city_name+')' if part_city_name else ''}", 
+                            #(coords['lat'], coords['long']), 
+                            None,
+                            addr_res) 
         else:
             
             return None
