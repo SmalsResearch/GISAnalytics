@@ -16,13 +16,20 @@ from requests_oauthlib import OAuth2Session
 __all__ = ("BestAddress", )
 
 
-
 def coalesce(dct, keys):
     for k in keys:
         if k in dct:
             return dct[k]
     return None
 
+def set_precision(res, precision):
+    if isinstance(res, list):
+        for ar in res:
+            ar.raw["precision"] = precision
+    else:
+        res.raw["precision"] = precision
+        
+        
 class BestAddress(Geocoder):
     
     _DEFAULT_BEST_DOMAIN  =None
@@ -131,6 +138,8 @@ class BestAddress(Geocoder):
         oauth = OAuth2Session(client=client, scope=self.scope)
 
         authorization_url = "%s://%s%s" % (self.scheme, self.domain, self.authorization_path)
+        if self.verbose:
+            print(authorization_url)
         self.token = oauth.fetch_token(token_url=authorization_url, include_client_id=True, client_secret=self.client_secret)
 
         if self.verbose:
@@ -276,7 +285,10 @@ class BestAddress(Geocoder):
         
         
         street_res= self._call_api(self.api_street, {"name": query["street"], "postCode": query["postcode"]}, timeout)
-
+        
+        if self.verbose:
+            print("street res.raw:")
+            print(street_res.raw)
         if street_res is None:
             if self.verbose:
                 print(f"Did not get any street for '{query['street']}', '{query['postcode']}'")
@@ -284,96 +296,83 @@ class BestAddress(Geocoder):
             city_res= self._call_api(self.api_city, {"name": query["city"], "postCode": query["postcode"]}, timeout)
             if city_res:
                 # print(city_res)
-                city_res["precision"] = "city"
-                city_name = coalesce(city_res["name"], ["fr", "nl", "de"])
-                
-                postcode = city_res["postCode"]
-                return Location(f"{postcode} {city_name}", None, city_res) 
+                set_precision(city_res, "city")
+               
+                return city_res
             
             return None
         
         if self.verbose:
-            print(f"Got streetId: '{street_res['id']}'")
-        addr_res= self._call_api(self.api_address, {"streetId": street_res["id"], "houseNumber": query["housenumber"]}, timeout)
+            print(f"Got streetId: '{street_res.raw['id']}'")
         
-        
+        params = {"streetId": street_res.raw["id"]}
+        if query["housenumber"] is not None:
+            params["houseNumber"] = query["housenumber"]
+            
+        addr_res= self._call_api(self.api_address, params , timeout, exactly_one=exactly_one)
       
         if self.verbose:
             print("addr res: ", addr_res)
             
         if addr_res is not None:
-            addr_res["precision"] = "building"
-             
+            set_precision(addr_res, "building")
+
         else:
-            addr_res= self._call_api(self.api_address, {"streetId": street_res["id"]}, timeout)
+            addr_res= self._call_api(self.api_address, {"streetId": street_res.raw["id"]}, timeout, exactly_one=exactly_one)
             if self.verbose:
                 print("res without house number")
-                print(addr_res)
+                if isinstance(addr_res, list):
+                    for ar in addr_res:
+                        print(ar.raw)
+                else:
+                    print(addr_res.raw)
             
             
             if addr_res is not None:
-                addr_res["precision"] = "street"
-            
+                #print("setting precision to street")
+                set_precision(addr_res, "street")
                 
         if addr_res is not None:
-            street_name = coalesce(addr_res["hasStreetName"]["name"], ["fr", "nl", "de"])
-            housenumber = addr_res["houseNumber"] if addr_res["precision"] == "building" else None
-            city_name = coalesce(addr_res["hasMunicipality"]["name"], ["fr", "nl", "de"])
-            part_city_name = coalesce(addr_res["hasPartOfMunicipality"]["name"], ["fr", "nl", "de"]) if "name" in addr_res["hasPartOfMunicipality"] else None
-            postcode = addr_res["hasPostalInfo"]["postCode"]
+            if isinstance(addr_res, list) and addr_res[0].latitude ==0 and addr_res[0].longitude==0 or isinstance(addr_res, Location) and addr_res.latitude ==0 and addr_res.longitude==0:
+                set_precision(addr_res, "country")
 
-            if "addressPosition" in addr_res:
-                coords = addr_res["addressPosition"]["wgs84"]
-            else: 
-                coords = {'lat':0, 'long':0}
-                addr_res["precision"] = "country"
             
-            return Location(f"{street_name}, {housenumber if housenumber else ''}, {postcode} {city_name} {'('+part_city_name+')' if part_city_name else ''}", 
-                            #(coords['lat'], coords['long']), 
-                            None,
-                            addr_res) 
-        else:
-            
-            return None
+        return addr_res
             
       
 
     def _parse_code(self, place):
         # Parse each resource.
         
+        street_name =    coalesce(place["hasStreetName"]["name"], ["fr", "nl", "de"]) if "hasStreetName" in place else None
+        housenumber =    place["houseNumber"] if "houseNumber" in place else None
+        city_name =      coalesce(place["hasMunicipality"]["name"], ["fr", "nl", "de"]) if "hasMunicipality" in place else None
+        part_city_name = coalesce(place["hasPartOfMunicipality"]["name"], ["fr", "nl", "de"]) if "hasPartOfMunicipality" in place and "name" in place["hasPartOfMunicipality"] else None
         
-        if "items" not in place or len(place["items"]) == 0:
-            return None
+        postcode = place["hasPostalInfo"]["postCode"] if "hasPostalInfo" in place else  place["postCode"] if "postCode" in place else None
+        city_name = coalesce(place["name"], ["fr", "nl", "de"]) if "name" in place else city_name
         
-        #print(f"{self.street_path} in {place['self']} ?") 
-        if "belgianAddress/v2/streets?" in place["self"]:
-            res= place["items"][0]
-            res = {"id": res["id"], "name": res["name"]}
-            return res
-        
-        if "belgianAddress/v2/addresses?" in place["self"]:
-            
-            #print("place: ", place)
-            
-            res = place["items"][0]
-            
-            return res
-        
-        if "belgianAddress/v2/postalInfos?" in place["self"]:
-            res = place["items"][0]
-            
-            return res
-        
-        print("Unkown response format!!")
+        if "addressPosition" in place:
+            coords = place["addressPosition"]["wgs84"]
+        else: 
+            coords = {'lat':0, 'long':0}
+                
+        return Location(f"{street_name}, {housenumber if housenumber else ''}, {postcode} {city_name} {'('+part_city_name+')' if part_city_name else ''}", 
+                            (coords['lat'], coords['long']), 
+                            #None,
+                            place) 
         
 
     def _parse_json(self, places, exactly_one):
         if not places:
             return None
+        if "items" not in places or len(places["items"])==0:
+            return None
 
         if self.verbose:
+            print("_parse_json: places")
             print(places)
-            
+        
         if isinstance(places, collections.abc.Mapping) and 'error' in places:
             
             if places['error'] == 'Unable to geocode':
@@ -382,14 +381,37 @@ class BestAddress(Geocoder):
             else:
                 raise GeocoderQueryError(places['error'])
 
-        if not isinstance(places, collections.abc.Sequence):
-            places = [places]
+
         if exactly_one:
-            return self._parse_code(places[0])
+            return self._parse_code(places["items"][0])
         else:
-            return [self._parse_code(place) for place in places]
+            return [self._parse_code(place) for place in places["items"]]
         
         
         
+    def reverse(
+            self,
+            query,
+            *,
+            exactly_one=True,
+            timeout=DEFAULT_SENTINEL,
+            radius=15
+    ):
+        try:
+            lat, lon = self._coerce_point_to_string(query).split(',')
+        except ValueError:
+            raise ValueError("Must be a coordinate pair or Point")
+        params = {
+            'yLat': lat,
+            'xLong': lon,
+            'radius': radius,
+        }
         
+        
+        return self._call_api(self.api_address, params, timeout, exactly_one=exactly_one)
+        
+        
+      
+    
+         
         

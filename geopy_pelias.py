@@ -73,7 +73,7 @@ class Pelias(Geocoder):
             ssl_context=ssl_context,
             adapter_factory=adapter_factory,
         )
-
+        self.verbose=False
         self.api_key = api_key
         self.domain = domain.strip('/')
 
@@ -97,7 +97,8 @@ class Pelias(Geocoder):
             timeout=DEFAULT_SENTINEL,
             boundary_rect=None,
             country_bias=None,
-            language=None
+            language=None,
+            sources=None
     ):
         """
         Return a location point by address.
@@ -158,9 +159,13 @@ class Pelias(Geocoder):
 
         if language:
             params["lang"] = language
+           
+        if sources:
+            params["sources"] = sources
 
         url = "?".join((self.geocode_struct_api if struct else self.geocode_api , urlencode(params)))
-        # print(url)
+        if self.verbose:
+            print(url)
         logger.debug("%s.geocode_api: %s", self.__class__.__name__, url)
         callback = partial(self._parse_json, exactly_one=exactly_one)
         return self._call_geocoder(url, callback, timeout=timeout)
@@ -224,7 +229,14 @@ class Pelias(Geocoder):
         # Parse each resource.
         latitude = feature.get('geometry', {}).get('coordinates', [])[1]
         longitude = feature.get('geometry', {}).get('coordinates', [])[0]
+        
+        if 49.29333 < latitude < 49.29335 and 2.30668 < longitude < 2.3067: # corresponds to 0,0 in Lambert
+            latitude = 0
+            longitude= 0
+            
         placename = feature.get('properties', {}).get('name')
+        if placename is None:
+            placename = "[missing name]"
         return Location(placename, (latitude, longitude), feature)
 
     def _parse_json(self, response, exactly_one):
