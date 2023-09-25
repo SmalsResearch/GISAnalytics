@@ -24,7 +24,7 @@ class NominatimWrapper(Geocoder):
         'countryName', 'country'
     }
 
-    geocode_path = '/REST/nominatimWrapper/v1.0/geocode'
+    geocode_path = '/REST/nominatimWrapper/v1/geocode'
     def __init__(
             self,
             *,
@@ -231,7 +231,7 @@ class NominatimWrapper(Geocoder):
         timeout = (timeout if timeout is not DEFAULT_SENTINEL
                    else self.timeout)
         
-        data = {"address": addr_data}
+        data = addr_data#{"address": addr_data}
 
         try: 
             
@@ -248,6 +248,7 @@ class NominatimWrapper(Geocoder):
             elif result.status_code == 400:
                 print("Argument error")
                 print(result.text)
+                print(addr_data)
             
             #print(type(result.text))
             return callback(json.loads(result.text))
@@ -255,6 +256,8 @@ class NominatimWrapper(Geocoder):
             print("Exception !")
             print(addr_data)
             print(e)
+            print(result.text)
+            print(url)
             raise e
 
     def _parse_code(self, place):
