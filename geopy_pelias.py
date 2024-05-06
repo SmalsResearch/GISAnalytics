@@ -34,7 +34,8 @@ class Pelias(Geocoder):
             user_agent=None,
             scheme=None,
             ssl_context=DEFAULT_SENTINEL,
-            adapter_factory=None
+            adapter_factory=None,
+            with_localities=True
             # Make sure to synchronize the changes of this signature in the
             # inheriting classes (e.g. GeocodeEarth).
     ):
@@ -76,7 +77,9 @@ class Pelias(Geocoder):
         self.verbose=False
         self.api_key = api_key
         self.domain = domain.strip('/')
-
+        
+        self.with_localities = with_localities
+        
         self.geocode_api = (
             '%s://%s%s' % (self.scheme, self.domain, self.geocode_path)
         )
@@ -132,11 +135,23 @@ class Pelias(Geocoder):
         
         if isinstance(query, dict):
             struct=True
-            params={
-                'address': query['address'],
-                'locality': query['locality'],
-                'postalcode': query['postalcode']
-            }
+            
+            if "street" in query and "housenumber" in query and "postcode" in query:
+                params={
+                    'address': f"{query['street']}, {query['housenumber']}",
+                    'postalcode': query['postcode']
+                }
+                if self.with_localities :
+                    params['locality'] = query['city'] 
+
+            else:
+                params={
+                    'address': query['address'],
+                    'postalcode': query['postalcode']
+                }
+                if self.with_localities :
+                    params['locality'] = query['locality'] 
+
         else:
             struct=False
             params = {'text': query}

@@ -139,7 +139,8 @@ class BestAddress(Geocoder):
 
         authorization_url = "%s://%s%s" % (self.scheme, self.domain, self.authorization_path)
         if self.verbose:
-            print(authorization_url)
+            print(authorization_url, self.client_secret, self.client_id)
+            
         self.token = oauth.fetch_token(token_url=authorization_url, include_client_id=True, client_secret=self.client_secret)
 
         if self.verbose:
