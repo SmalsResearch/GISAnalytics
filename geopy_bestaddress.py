@@ -1,6 +1,6 @@
 import collections.abc
 from functools import partial
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote_plus
 
 from geopy.exc import ConfigurationError, GeocoderQueryError, GeocoderAuthenticationFailure
 from geopy.geocoders.base import _DEFAULT_USER_AGENT, DEFAULT_SENTINEL, Geocoder
@@ -34,21 +34,20 @@ class BestAddress(Geocoder):
     
     _DEFAULT_BEST_DOMAIN  =None
 
-    #geocode_path = '/api/belgianAddress/v2/addresses'
+    authorization_path  = "api/oauth2/token"
+    
+    street_path         = "api/best/v1/belgianAddress/v2/streets"
 
+    address_path        =  "api/best/v1/belgianAddress/v2/addresses"
     
-    authorization_path = "/REST/publicFedServicesGateway/v1/api/oauth2/token"
-    
-    street_path   = "/REST/publicFedServicesGateway/v1/api/best/v1/belgianAddress/v2/streets"
+    postalinfo_path     =  "api/best/v1/belgianAddress/v2/postalInfos"
 
-    address_path  =  "/REST/publicFedServicesGateway/v1/api/best/v1/belgianAddress/v2/addresses"
-    
-    city_path     =  "/REST/publicFedServicesGateway/v1/api/best/v1/belgianAddress/v2/postalInfos"
+    municipality_path   =  "api/best/v1/belgianAddress/v2/municipalities"
+
+    prefix = "/"
 
     scope             = "BOSA"
 
-    belgov_trace_id="77ce8201c060-342bfe84-1d4c-4730-666"
-    
     
     def __init__(
             self,
@@ -57,12 +56,14 @@ class BestAddress(Geocoder):
             proxies=DEFAULT_SENTINEL,
             domain=_DEFAULT_BEST_DOMAIN,
             scheme="https",
+            prefix=None,
             user_agent=None,
             ssl_context=DEFAULT_SENTINEL,
             adapter_factory=None,
             client_id=None,
             client_secret=None,
             token=None,
+            belgov_trace_id=None,
             verbose=False
             # Make sure to synchronize the changes of this signature in the
             # inheriting classes (e.g. PickPoint).
@@ -110,7 +111,8 @@ class BestAddress(Geocoder):
         #print(f"domain: {domain}, : {self._DEFAULT_BEST_DOMAIN}")
         self.domain = domain.strip('/')
         
-        
+        if prefix is not None:
+            self.prefix=prefix
         
         
         
@@ -128,20 +130,24 @@ class BestAddress(Geocoder):
 
             
 
-        self.api_street  = "%s://%s%s" % (self.scheme, self.domain, self.street_path)
-        self.api_address = "%s://%s%s" % (self.scheme, self.domain, self.address_path)
-        self.api_city = "%s://%s%s" % (self.scheme, self.domain, self.city_path)
+        self.api_street       = "%s://%s%s%s" % (self.scheme, self.domain, self.prefix, self.street_path)
+        self.api_address      = "%s://%s%s%s" % (self.scheme, self.domain, self.prefix, self.address_path)
+        self.api_postalinfo   = "%s://%s%s%s" % (self.scheme, self.domain, self.prefix, self.postalinfo_path)
+        self.api_municipality = "%s://%s%s%s" % (self.scheme, self.domain, self.prefix, self.municipality_path)
 
+        self.authorization_url = "%s://%s%s%s" % (self.scheme, self.domain, self.prefix, self.authorization_path)
+
+        self.belgov_trace_id = belgov_trace_id
     def renew_token(self):
         
         client = BackendApplicationClient(client_id=self.client_id)
         oauth = OAuth2Session(client=client, scope=self.scope)
 
-        authorization_url = "%s://%s%s" % (self.scheme, self.domain, self.authorization_path)
+        
         if self.verbose:
-            print(authorization_url, self.client_secret, self.client_id)
+            print(self.authorization_url, self.client_secret, self.client_id)
             
-        self.token = oauth.fetch_token(token_url=authorization_url, include_client_id=True, client_secret=self.client_secret)
+        self.token = oauth.fetch_token(token_url=self.authorization_url, include_client_id=True, client_secret=self.client_secret)
 
         if self.verbose:
             print(self.token)
@@ -162,7 +168,7 @@ class BestAddress(Geocoder):
         """
         return "?".join((base_api, urlencode(params)))
 
-    def _call_api(self, api_base, params, timeout, exactly_one=True):
+    def _call_api(self, api_base, params, timeout, exactly_one=True, return_raw=False):
         
         if self.token is None:
             self.renew_token()
@@ -176,7 +182,7 @@ class BestAddress(Geocoder):
         logger.debug("%s.geocode: %s", self.__class__.__name__, url)
         
 #         print(f"street url : {street_url}")
-        callback = partial(self._parse_json, exactly_one=exactly_one)
+        callback = partial(self._parse_json, exactly_one=exactly_one, return_raw=return_raw)
         try :
             return self._call_geocoder(url, callback, headers=headers, timeout=timeout)
         except GeocoderAuthenticationFailure:
@@ -205,6 +211,7 @@ class BestAddress(Geocoder):
             featuretype=None,
             namedetails=False,
             skip_house_number=False,
+            return_raw=False
         
     ):
         """
@@ -281,66 +288,26 @@ class BestAddress(Geocoder):
             ``exactly_one=False``.
 
         """
-        
-        # Part 1: get street ID: 
-        
-        
-        street_res= self._call_api(self.api_street, {"name": query["street"], "postCode": query["postcode"]}, timeout)
-        
-        if self.verbose:
-            print("street res.raw:")
-            print(street_res.raw)
-        if street_res is None:
-            if self.verbose:
-                print(f"Did not get any street for '{query['street']}', '{query['postcode']}'")
-            
-            city_res= self._call_api(self.api_city, {"name": query["city"], "postCode": query["postcode"]}, timeout)
-            if city_res:
-                # print(city_res)
-                set_precision(city_res, "city")
-               
-                return city_res
-            
-            return None
-        
-        if self.verbose:
-            print(f"Got streetId: '{street_res.raw['id']}'")
-        
-        params = {"streetId": street_res.raw["id"]}
-        if query["housenumber"] is not None:
-            params["houseNumber"] = query["housenumber"]
-            
-        addr_res= self._call_api(self.api_address, params , timeout, exactly_one=exactly_one)
-      
-        if self.verbose:
-            print("addr res: ", addr_res)
-            
-        if addr_res is not None:
-            set_precision(addr_res, "building")
 
-        else:
-            addr_res= self._call_api(self.api_address, {"streetId": street_res.raw["id"]}, timeout, exactly_one=exactly_one)
-            if self.verbose:
-                print("res without house number")
-                if isinstance(addr_res, list):
-                    for ar in addr_res:
-                        print(ar.raw)
-                else:
-                    print(addr_res.raw)
-            
-            
-            if addr_res is not None:
-                #print("setting precision to street")
-                set_precision(addr_res, "street")
-                
-        if addr_res is not None:
-            if isinstance(addr_res, list) and addr_res[0].latitude ==0 and addr_res[0].longitude==0 or isinstance(addr_res, Location) and addr_res.latitude ==0 and addr_res.longitude==0:
-                set_precision(addr_res, "country")
+        sequence = [(self.api_address,       {"streetName":  query["street"], "postCode": query["postcode"], "houseNumber": query["housenumber"]}, "building"),
+                    (self.api_address,       {"streetName":  query["street"], "postCode": query["postcode"]}, "street"),
+                    (self.api_postalinfo,    {"postCode":  query["postcode"]}, "city"),
+                    (self.api_postalinfo,    {"name":      query["city"]},     "city"),
+                    (self.api_municipality,  {"name":      query["city"]},     "city")
+                   ]
 
-            
-        return addr_res
-            
-      
+
+        for (api_base, params, precision) in sequence:
+            addr_res= self._call_api(api_base, params, timeout, exactly_one=exactly_one, return_raw=return_raw)
+
+            # print(addr_res)
+            if addr_res is not None and ("items" in addr_res and len(addr_res["items"])>0):
+                if not return_raw: 
+                    set_precision(addr_res, precision)
+                return addr_res
+
+        return None
+
 
     def _parse_code(self, place):
         # Parse each resource.
@@ -364,9 +331,14 @@ class BestAddress(Geocoder):
                             place) 
         
 
-    def _parse_json(self, places, exactly_one):
+    def _parse_json(self, places, exactly_one, return_raw):
+
+        if return_raw: # Do not convert BestAddress result in Location objects
+            return places
+            
         if not places:
             return None
+
         if "items" not in places or len(places["items"])==0:
             return None
 
@@ -389,7 +361,23 @@ class BestAddress(Geocoder):
             return [self._parse_code(place) for place in places["items"]]
         
         
+    def get_by_id(self, id, object_type="address", timeout=DEFAULT_SENTINEL):
+        if object_type == "address":
+            url = self.api_address+"/"+quote_plus(id)
+        elif object_type == "street":
+            url = self.api_street+"/"+quote_plus(id)
+        elif object_type == "postalinfo":
+            url = self.api_postalinfo+"/"+quote_plus(id)
+        elif object_type == "municipality":
+            url = self.api_municipality+"/"+quote_plus(id)
+        else:
+            return {"error": f"Unknown object_type value '{object_type}'. Valid values are 'addresses', 'streets', 'postalinfos' and 'municipalities' "}
+
+        if self.verbose: 
+            print(url)
+        return self._call_api(url, {}, timeout, exactly_one=False, return_raw=True)
         
+    
     def reverse(
             self,
             query,
