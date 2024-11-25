@@ -130,7 +130,8 @@ class BePelias(Geocoder):
                   'houseNumber':query['housenumber'] ,
                   'postCode': query['postcode'],
                   'postName': query['city'],
-                  'mode': self.mode
+                  'mode': self.mode,
+                  'raw':False
                  }
 
            
@@ -146,10 +147,10 @@ class BePelias(Geocoder):
 
 
 
-    def _parse_code(self, feature, bepelias_meta):
+    def _parse_code_old(self, feature, bepelias_meta):
         # Parse each resource.
-        latitude = feature.get('geometry', {}).get('coordinates', [])[1]
-        longitude = feature.get('geometry', {}).get('coordinates', [])[0]
+        latitude = feature.get('geometry', {}).get('coordinates', {}).get('lat', 0)
+        longitude = feature.get('geometry', {}).get('coordinates', {}).get('lon', 0)
         
         if 49.29333 < latitude < 49.29335 and 2.30668 < longitude < 2.3067: # corresponds to 0,0 in Lambert
             latitude = 0
@@ -157,22 +158,63 @@ class BePelias(Geocoder):
             
         placename = feature.get('properties', {}).get('name')
         if placename is None:
-            placename = "[missing name]"
+            placename = "[mising name]"
+        
+            
             
         if bepelias_meta:
-            feature["bepelias"]=bepelias_meta
+            if "bepelias" in feature:
+                    feature["bepelias"] |=bepelias_meta 
+            else:
+                feature["bepelias"]=bepelias_meta
+                
+        return Location(placename, (latitude, longitude), feature)
+
+    def _parse_code(self, feature, bepelias_meta):
+        # Parse each resource.
+        latitude = feature.get('coordinates', {}).get('lat', 0)
+        longitude = feature.get('coordinates', {}).get('lon', 0)
+        
+        if 49.29333 < latitude < 49.29335 and 2.30668 < longitude < 2.3067: # corresponds to 0,0 in Lambert
+            latitude = 0
+            longitude= 0
+            
+        placename = []
+        
+        if "housenumber" in feature:
+            placename.append(feature["housenumber"])
+        if "street" in feature:
+            placename.append("/".join(feature["street"]["name"].values()))
+        
+        if "postalInfo" in feature:
+            placename.append(feature["postalInfo"]["postalCode"])
+
+        if "municipality" in feature:
+            placename.append("/".join(feature["municipality"]["name"].values()))
+            
+        if "name" in feature:
+            placename.append(feature["name"])
+
+        placename = ", ".join(placename)
+            
+        if bepelias_meta:
+            if "bepelias" in feature:
+                    feature["bepelias"] |=bepelias_meta 
+            else:
+                feature["bepelias"]=bepelias_meta
+                
         return Location(placename, (latitude, longitude), feature)
 
     def _parse_json(self, response, exactly_one):
         if response is None:
             return None
-        features = response['features']
-        if 'bepelias' in response:
-            bepelias_meta  = response['bepelias']
-        else: 
-#             print("Missing ngi meta: ")
-#             print(response)
-            bepelias_meta = None
+        
+        # print(response)
+        # features = response['peliasRaw']['features']
+        features = response['items']
+        
+        bepelias_meta = {k: response[k] for k in ["callType", "inAddr", "peliasCallCount", "transformers"] if k in response}
+
         if not len(features):
             return None
         if exactly_one:

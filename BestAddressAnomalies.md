@@ -5,12 +5,14 @@ Le script/notebook Python BestAddressAnomalies.ipynb a pour but de mettre en év
 Il s'agit ici de résultats prélimilaires, ayant pour objectif de montrer l'intérêt des techniques de GIS Analytics dans ce contexte de Data Quality.
 
 Quatre types d'analyse distinctes sont menées : 
+
 - Dans la première, nous regardons si toutes numéros de boite d'une même adresse sont bien localisés proches l'un de l'autre
 - Dans la deuxième, nous comparons les frontières des codes postaux définis par bPost avec les codes postaux des adresses BestAddreses, ainsi que les frontières des codes NIS fournis par StatBel.
 - Dans la troisième, nous recherchons des incohérences sur des noms de rues géographiquement proches (par exemple une "Rue Roi Albert I" juste à côté d'une "Rue du Roi Albert I")
 - Dans la quatrième, nous recherchons des anomalies géométriques dans la forme d'une rue (plus précisément l'ensemble des adresses de même parité)
 
 Principal résultat à retenir:
+
 - +/- 17.000 adresses ont un code postal incohérent avec les contours des codes postaux définis par bPost. Étonnamment, il semble qu’il n’y ait aucune incohérence par rapport au code NIS;
 - On trouve une centaine de rues dont l’orthographe diffère légèrement entre plusieurs tronçons (pair vs impair, ou au passage d’un code postal à l’autre);
 - Sans doute plusieurs centaines d’adresses qui ne sont pas localisées au bon endroit (il faudra une exploration plus approfondie pour en connaitre le nombre plus précis).
@@ -42,11 +44,13 @@ Pour ce faire, pour chaque adresse de Best, on regarde dans quel polygône de bP
 Pour éviter les problèmes de précision d'un point qui serait juste à la frontière, on supprime des contours de bPost un ruban de 50 mètres. On identifie donc un inconsistance que quand une adresse d'un code postal P1 != P2 (selon Best) est réellement dans le polygone d'un code postal P2 (selon bPost). 
 
 Dans chaque page du fichier "best_anomalies_[region]_zip_mismatches.pdf", on peut voir :
+
 - En titre, le code auquel Best associe tous les points de la carte
 - Le tracé rouge indique le polygone de ce code postal selon bPost. S'il n'est pas présent, c'est que le code postal est inconnu de bPost (en tout cas de son shapefile)
 - Chaque point représente les adresses Best incohérentes avec bPost. Sa couleur indique le code postal qu'il devrait avoir selon bPost
 
 On trouve : 
+
 - WAL: ~7880 anomalies
 - BRU: ~75 anomalies
 - VLG: ~11.000 anomalies
@@ -62,6 +66,7 @@ Nous remarquons nettement moins d'anomalies qu'avec le code postal. Les seules a
     
 Pour cette analyse, nous commençons par identifier la liste de tous les couples de rues adjacentes (c'est-à-dire que l'une a une adresse distante de moins de 100 mètres d'une adresse de l'autre). Nous regardons ensuite si l'on ne trouve pas de petites différences dans les noms de rue. 
 Nous rencontrons typiquement deux situations : 
+
 - Des rues traversant plusieurs communes avec une orthographe différente dans chacune d'elle : "Rue de Monténégro, 1060", vs "Rue du Monténégro, 1190"
 - Des rues avec deux orthographes différentes au sein de la même commune: "Chaussée Brunehault" ou "Chaussée Brunehaut", à 4452 dans les 2 cas
 
