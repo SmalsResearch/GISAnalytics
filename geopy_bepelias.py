@@ -21,6 +21,7 @@ class BePelias(Geocoder):
     """
 
     geocode_path = '/REST/bepelias/v1/geocode'
+    geocode_unstruct_path = '/REST/bepelias/v1/geocode/unstructured'
     
     reverse_path = '/v1/reverse'
 
@@ -83,6 +84,9 @@ class BePelias(Geocoder):
             '%s://%s%s' % (self.scheme, self.domain, self.geocode_path)
         )
         
+        self.geocode_unstruct_api = (
+            '%s://%s%s' % (self.scheme, self.domain, self.geocode_unstruct_path)
+        )
 
     def geocode(
             self,
@@ -125,50 +129,37 @@ class BePelias(Geocoder):
             ``exactly_one=False``.
         """
         
+        if isinstance(query, dict):
         
-        params = {'streetName': query['street'],
-                  'houseNumber':query['housenumber'] ,
-                  'postCode': query['postcode'],
-                  'postName': query['city'],
-                  'mode': self.mode,
-                  'raw':False
-                 }
+            params = {'streetName': query['street'],
+                      'houseNumber':query['housenumber'] ,
+                      'postCode': query['postcode'],
+                      'postName': query['city'],
+                      'mode': self.mode,
+                      'withPeliasResult':False
+                     }
+            url_base = self.geocode_api
+            
+        else:
+            params = {'address': query,
+                      'mode': self.mode,
+                      'withPeliasResult':False
+                     }
+            url_base = self.geocode_unstruct_api
+            
 
-           
+       
         if sources:
             params["sources"] = sources
+    
+        url = "?".join((url_base , urlencode(params)))
 
-        url = "?".join((self.geocode_api , urlencode(params)))
         if self.verbose:
             print(url)
         logger.debug("%s.geocode_api: %s", self.__class__.__name__, url)
         callback = partial(self._parse_json, exactly_one=exactly_one)
         return self._call_geocoder(url, callback, timeout=timeout)
 
-
-
-    def _parse_code_old(self, feature, bepelias_meta):
-        # Parse each resource.
-        latitude = feature.get('geometry', {}).get('coordinates', {}).get('lat', 0)
-        longitude = feature.get('geometry', {}).get('coordinates', {}).get('lon', 0)
-        
-        if 49.29333 < latitude < 49.29335 and 2.30668 < longitude < 2.3067: # corresponds to 0,0 in Lambert
-            latitude = 0
-            longitude= 0
-            
-        placename = feature.get('properties', {}).get('name')
-        if placename is None:
-            placename = "[mising name]"
-        
-            
-            
-        if bepelias_meta:
-            if "bepelias" in feature:
-                    feature["bepelias"] |=bepelias_meta 
-            else:
-                feature["bepelias"]=bepelias_meta
-                
-        return Location(placename, (latitude, longitude), feature)
 
     def _parse_code(self, feature, bepelias_meta):
         # Parse each resource.
