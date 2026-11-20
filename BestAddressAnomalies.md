@@ -120,6 +120,24 @@ Ceci s'explique souvent par deux phénomènes distincts:
 - Situation normale : une rue "circulaire", dans laquelle le dernier numéro se situe à côté du premier
 - Situation anormale : sur le coin entre deux rues, un batiment a été assigné à la mauvaise rue
 
+
+### projection_offset
+
+Pour cette métrique, on commence par calculer un tracé approximé de la route. Pour ce faire, on réalise plusieurs étapes : 
+
+- On supprime les "outliers", à savoir tout point isolé de plus de 100m des autres
+- On relie ensuite les points qui restent dans un ordre "géographiquement logique", sans tenir compte des numéros de police : 
+    - On commence par déterminer l'axe général de la route (à l'aide d'une 'Singular Value Decomposition' ; https://numpy.org/doc/stable/reference/generated/numpy.linalg.svd.html)
+    - On projette chaque point sur cet axe, c'est-à-dire qu'on le place au point le plus proche sur cet axe
+    - On relie ensuite les points dans l'ordre dans lequel ils ont été projetés sur l'axe principal
+- On simplifie ensuite la courbe obtenue, de façon à la "lisser". On utilise l'algorithme de Taubin (https://pypi.org/project/shapelysmooth/#user-content-taubin)
+
+Sur cette courbe lissée, on va projeter chaque adresse (la positionner sur le point le plus proche de la courbe). Pour chaque adresse, on obtient ainsi une valeur correspondant à sa position sur la courbe. On trie ensuite en fonction du numéro de police et on compare les valeurs projetées successives.
+Si deux numéros sont "logiquement" positionnés, un numéro aura une valeur projetée plus faible qu'un numéro plus élevé. Si ça n'est pas le cas, ça signifie qu'un numéro se trouve plus tôt qu'attendu dans la séquence des numéros et est donc susceptible d'être mal positionné. 
+
+Cette métrique fait ressortir des cas intéressants non détectés par les métriques précédentes, mais génère aussi beaucoup de faux posifits. En effet, dans le cas des dispositions très peu linéaires (comme des rues très sinueuse ou des lotissement), l'approximation de la route sera très mauvaise.
+
+
 ### Liste consolidée
 
 Dans le fichier "best_anomalies_[region]_consolidated.pdf", on retrouvera la liste de tous les blocs de rue se situant dans le top 50 d'au moins une des métriques présentées ci-desssus.
